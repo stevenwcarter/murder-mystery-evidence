@@ -1,6 +1,7 @@
 //! Murder-mystery evidence viewer.
 
 pub mod config;
+pub mod evidence;
 pub mod healthcheck;
 pub mod server;
 pub mod state;
