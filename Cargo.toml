@@ -4,3 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.104"
+axum = "0.8"
+clap = { version = "4.6.7", features = ["derive"] }
+tokio = { version = "1.54.1", features = ["full"] }
+tower-http = { version = "0.7.1", features = ["compression-gzip"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+axum-test = "21.1.0"
+
+[target.'cfg(target_env = "musl")'.dependencies]
+tikv-jemallocator = "0.7.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
