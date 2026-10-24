@@ -1,21 +1,50 @@
 // Live round updates and the pinch-zoom evidence viewer. No dependencies.
 "use strict";
 
-// Live update: reload when the detective moves to another round.
+const viewer = document.getElementById("viewer");
+
+// Live update: reload when the detective moves to another round, but never
+// under a guest who is studying an image; that reload waits for the viewer
+// to close.
 const live = document.getElementById("live");
+const RETRY_MS = 3000;
+let events;
+let reloadOnClose = false;
+
 const setLive = (state) => {
   live.textContent = state;
   live.dataset.state = state;
 };
-const events = new EventSource("/events");
-events.addEventListener("open", () => setLive("live"));
-events.addEventListener("error", () => setLive("reconnecting"));
-events.addEventListener("round", (event) => {
-  if (event.data !== document.body.dataset.round) location.reload();
+
+const onRound = (event) => {
+  const changed = event.data !== document.body.dataset.round;
+  if (changed && !viewer.open) location.reload();
+  else reloadOnClose = changed;
+};
+
+// EventSource retries network errors by itself, but a non-200 answer (a 502
+// from the tunnel while the pod restarts) closes it for good, so start over.
+const reconnectIfClosed = () => {
+  if (events.readyState === EventSource.CLOSED) connect();
+};
+
+const connect = () => {
+  const source = new EventSource("/events");
+  source.addEventListener("open", () => setLive("live"));
+  source.addEventListener("error", () => {
+    setLive("reconnecting");
+    if (source.readyState === EventSource.CLOSED) setTimeout(reconnectIfClosed, RETRY_MS);
+  });
+  source.addEventListener("round", onRound);
+  events = source;
+};
+
+connect();
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") reconnectIfClosed();
 });
 
 // Viewer.
-const viewer = document.getElementById("viewer");
 const stage = viewer.querySelector(".stage");
 const image = document.getElementById("viewer-image");
 const caption = document.getElementById("viewer-title");
@@ -31,6 +60,9 @@ let scale = MIN_SCALE;
 let x = 0;
 let y = 0;
 let lastTap = 0;
+// Whether the current tap may close the viewer: it began un-zoomed, with one
+// finger, and was not the second half of a double-tap.
+let tapMayClose = false;
 const pointers = new Map();
 
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
@@ -76,8 +108,13 @@ const pinchOf = () => {
 stage.addEventListener("pointerdown", (event) => {
   stage.setPointerCapture(event.pointerId);
   pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  if (pointers.size !== 1) return;
-  if (event.timeStamp - lastTap < DOUBLE_TAP_MS) {
+  if (pointers.size !== 1) {
+    tapMayClose = false;
+    return;
+  }
+  const doubleTap = event.timeStamp - lastTap < DOUBLE_TAP_MS;
+  tapMayClose = scale === MIN_SCALE && !doubleTap;
+  if (doubleTap) {
     zoomAt(event.clientX, event.clientY, scale > MIN_SCALE ? MIN_SCALE : TAP_SCALE);
     lastTap = 0;
   } else {
@@ -112,8 +149,9 @@ const release = (event) => pointers.delete(event.pointerId);
 stage.addEventListener("pointerup", release);
 stage.addEventListener("pointercancel", release);
 
-// A tap on the black around the image closes the viewer, unless zoomed in.
-// Pointer capture retargets the click to the stage, so test the position.
+// A tap on the black around the image closes the viewer, unless it started
+// zoomed in or toggled the zoom. Pointer capture retargets the click to the
+// stage, so test the position.
 stage.addEventListener("click", (event) => {
   const rect = image.getBoundingClientRect();
   const outside =
@@ -121,10 +159,13 @@ stage.addEventListener("click", (event) => {
     event.clientX > rect.right ||
     event.clientY < rect.top ||
     event.clientY > rect.bottom;
-  if (outside && scale === MIN_SCALE) viewer.close();
+  if (outside && tapMayClose) viewer.close();
 });
 document.getElementById("viewer-close").addEventListener("click", () => viewer.close());
-viewer.addEventListener("close", reset);
+viewer.addEventListener("close", () => {
+  if (reloadOnClose) location.reload();
+  else reset();
+});
 
 document.addEventListener("click", (event) => {
   const link = event.target.closest("a.view");
