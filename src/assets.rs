@@ -74,5 +74,12 @@ fn content_type(file: &str) -> Option<&'static str> {
 
 /// The single 404 response used for every missing or locked file.
 pub fn not_found() -> Response {
-    (StatusCode::NOT_FOUND, "not found").into_response()
+    // The path ends in `.jpg`, which Cloudflare would cache; a locked file
+    // must be fetchable again as soon as its round starts.
+    (
+        StatusCode::NOT_FOUND,
+        [(CACHE_CONTROL, "no-store")],
+        "not found",
+    )
+        .into_response()
 }

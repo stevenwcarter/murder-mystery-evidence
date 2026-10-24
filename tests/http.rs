@@ -34,6 +34,8 @@ async fn locked_evidence_is_404_and_identical_to_unknown() {
     locked.assert_status_not_found();
     unknown.assert_status_not_found();
     assert_eq!(locked.text(), unknown.text());
+    locked.assert_header("cache-control", "no-store");
+    unknown.assert_header("cache-control", "no-store");
 }
 
 #[tokio::test]
@@ -96,23 +98,19 @@ async fn unauthenticated_post_does_not_change_round() {
 #[tokio::test]
 async fn invalid_round_is_rejected() {
     let server = server(1);
-    for value in ["0", "5", "abc"] {
+    let locked = || server.get("/evidence/round2-notebook.jpg");
+    for value in ["0", "5", "abc", "300"] {
         let res = admin(server.post("/admin/round"))
             .form(&[("round", value)])
             .await;
-        assert!(
-            matches!(
-                res.status_code(),
-                StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
-            ),
-            "round={value} gave {}",
-            res.status_code()
-        );
+        res.assert_status(StatusCode::BAD_REQUEST);
+        locked().await.assert_status_not_found();
     }
-    server
-        .get("/evidence/round2-notebook.jpg")
-        .await
-        .assert_status_not_found();
+    let res = admin(server.post("/admin/round"))
+        .content_type("application/x-www-form-urlencoded")
+        .await;
+    res.assert_status(StatusCode::BAD_REQUEST);
+    locked().await.assert_status_not_found();
 }
 
 #[tokio::test]

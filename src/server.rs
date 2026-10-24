@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use axum::extract::State;
+use axum::extract::rejection::FormRejection;
 use axum::http::StatusCode;
 use axum::http::header::{CACHE_CONTROL, HeaderName};
 use axum::response::Redirect;
@@ -60,26 +61,40 @@ async fn admin_page(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 /// Moves the game to the submitted round, or answers `400` if it is out of range.
-async fn set_round(State(state): State<AppState>, Form(form): Form<RoundForm>) -> Response {
+async fn set_round(
+    State(state): State<AppState>,
+    form: Result<Form<RoundForm>, FormRejection>,
+) -> Response {
+    let Ok(Form(form)) = form else {
+        return bad_round();
+    };
     match Round::new(form.round) {
         Some(round) => {
             state.set(round);
             Redirect::to("/admin").into_response()
         }
-        None => (StatusCode::BAD_REQUEST, "round must be 1 to 4").into_response(),
+        None => bad_round(),
     }
+}
+
+fn bad_round() -> Response {
+    (StatusCode::BAD_REQUEST, "round must be 1 to 4").into_response()
 }
 
 /// Serves until ctrl-c or SIGTERM.
 pub async fn run(config: Config) -> Result<()> {
     let round = Round::new(config.initial_round).context("initial round out of range")?;
-    let app = router(AppState::with_round(&config.admin_password, round));
+    let state = AppState::with_round(&config.admin_password, round);
+    let app = router(state.clone());
     let listener = TcpListener::bind(config.listen)
         .await
         .with_context(|| format!("binding {}", config.listen))?;
     info!(address = %config.listen, "listening");
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            state.shutdown();
+        })
         .await
         .context("serving")
 }

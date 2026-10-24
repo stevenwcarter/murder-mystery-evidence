@@ -34,6 +34,10 @@ impl Config {
             .parse()
             .context("MM_LISTEN must be a socket address like 0.0.0.0:8080")?;
         let admin_password = get("MM_ADMIN_PASSWORD").context("MM_ADMIN_PASSWORD must be set")?;
+        ensure!(
+            !admin_password.is_empty(),
+            "MM_ADMIN_PASSWORD must not be empty"
+        );
         let initial_round = get("MM_INITIAL_ROUND")
             .map(|raw| raw.parse::<u8>())
             .transpose()
@@ -65,6 +69,11 @@ mod tests {
     #[test]
     fn missing_password_is_an_error() {
         assert!(Config::from_vars(|_| None).is_err());
+    }
+
+    #[test]
+    fn empty_password_is_an_error() {
+        assert!(Config::from_vars(|k| (k == "MM_ADMIN_PASSWORD").then(String::new)).is_err());
     }
 
     #[test]

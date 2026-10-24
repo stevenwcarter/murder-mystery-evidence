@@ -11,6 +11,8 @@ use crate::evidence::Round;
 pub struct AppState {
     /// Current round; receivers learn about every change.
     round: Arc<watch::Sender<Round>>,
+    /// Flips to `true` on shutdown so open event streams can end.
+    shutdown: Arc<watch::Sender<bool>>,
     /// Password required by the admin controls.
     pub admin_password: Arc<str>,
 }
@@ -25,6 +27,7 @@ impl AppState {
     pub fn with_round(admin_password: &str, round: Round) -> Self {
         Self {
             round: Arc::new(watch::Sender::new(round)),
+            shutdown: Arc::new(watch::Sender::new(false)),
             admin_password: admin_password.into(),
         }
     }
@@ -37,6 +40,20 @@ impl AppState {
     /// Moves the game to `round` and notifies subscribers.
     pub fn set(&self, round: Round) {
         self.round.send_replace(round);
+    }
+
+    /// Tells long-lived connections (event streams) to finish.
+    pub fn shutdown(&self) {
+        self.shutdown.send_replace(true);
+    }
+
+    /// Completes once [`AppState::shutdown`] has been called.
+    pub fn shutdown_signal(&self) -> impl Future<Output = ()> + use<> {
+        let mut rx = self.shutdown.subscribe();
+        async move {
+            // The sender lives in `self`, so an error only means the state is gone.
+            let _ = rx.wait_for(|down| *down).await;
+        }
     }
 
     /// A receiver that sees the current round and every later change.

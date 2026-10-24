@@ -8,7 +8,7 @@ round from an admin page and guests' pages update live over SSE.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MM_ADMIN_PASSWORD` | required | Password for the `/admin` pages (user `detective`) |
+| `MM_ADMIN_PASSWORD` | required | Password for the `/admin` pages (any user name) |
 | `MM_INITIAL_ROUND` | `1` | Round shown at start |
 | `MM_LISTEN` | `0.0.0.0:8080` | Listen address (also probed by `healthcheck`) |
 | `RUST_LOG` | `info` | Log filter |

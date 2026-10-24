@@ -64,7 +64,7 @@ pub fn guest(current: Round) -> Markup {
             }
             (viewer())
             footer {
-                span #live { "connecting" }
+                span #live {}
             }
             script src="/assets/app.js" defer {}
         }

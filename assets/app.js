@@ -41,7 +41,12 @@ const connect = () => {
 
 connect();
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") reconnectIfClosed();
+  // After a sleep the socket can be dead while still reporting OPEN, so always
+  // start over; the server sends the current round on connect.
+  if (document.visibilityState === "visible") {
+    events.close();
+    connect();
+  }
 });
 
 // Viewer.
@@ -132,6 +137,7 @@ stage.addEventListener("pointermove", (event) => {
     const after = pinchOf();
     x += after.mx - before.mx;
     y += after.my - before.my;
+    render();
     if (before.distance > 0) {
       zoomAt(after.mx, after.my, (scale * after.distance) / before.distance);
     }
@@ -170,6 +176,8 @@ viewer.addEventListener("close", () => {
 document.addEventListener("click", (event) => {
   const link = event.target.closest("a.view");
   if (!link || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  // No <dialog> support: let the link open the image itself.
+  if (typeof viewer.showModal !== "function") return;
   event.preventDefault();
   image.src = link.href;
   image.alt = link.dataset.title;
