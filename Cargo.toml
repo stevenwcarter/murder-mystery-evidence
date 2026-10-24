@@ -8,6 +8,8 @@ anyhow = "1.0.104"
 axum = "0.8"
 base64 = "0.23.1"
 clap = { version = "4.6.7", features = ["derive"] }
+hex = "0.4.3"
+maud = { version = "0.27.0", features = ["axum"] }
 rust-embed = "8.13.0"
 serde = { version = "1.0.229", features = ["derive"] }
 subtle = "2.6.1"

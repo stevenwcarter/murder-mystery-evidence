@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::http::header::{CACHE_CONTROL, HeaderName};
 use axum::response::Redirect;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -10,13 +11,15 @@ use axum::{Form, Router, middleware};
 use serde::Deserialize;
 use tokio::net::TcpListener;
 use tokio::signal::{self, unix::SignalKind};
+use tower_http::compression::CompressionLayer;
 use tracing::info;
 
-use crate::assets::evidence_file;
+use crate::assets::{evidence_file, static_asset};
 use crate::auth::require_admin;
 use crate::config::Config;
 use crate::events::events;
 use crate::evidence::Round;
+use crate::pages;
 use crate::state::AppState;
 
 /// Body of `POST /admin/round`.
@@ -32,16 +35,28 @@ pub fn router(state: AppState) -> Router {
         .route("/admin/round", post(set_round))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin));
     Router::new()
+        .route("/", get(guest_page))
         .route("/healthz", get(|| async { "ok" }))
         .route("/evidence/{slug}", get(evidence_file))
         .route("/events", get(events))
+        .route("/assets/{file}", get(static_asset))
         .merge(admin)
         .with_state(state)
+        // The default predicate skips `text/event-stream` (and images), so SSE is never buffered.
+        .layer(CompressionLayer::new())
 }
 
-/// Placeholder admin page showing the current round.
-async fn admin_page(State(state): State<AppState>) -> String {
-    format!("round {}", state.current())
+/// Both pages show the live round, so neither may be cached.
+const NO_STORE: [(HeaderName, &str); 1] = [(CACHE_CONTROL, "no-store")];
+
+/// `GET /`: the guest page for the current round.
+async fn guest_page(State(state): State<AppState>) -> impl IntoResponse {
+    (NO_STORE, pages::guest(state.current()))
+}
+
+/// `GET /admin`: the host's round controls.
+async fn admin_page(State(state): State<AppState>) -> impl IntoResponse {
+    (NO_STORE, pages::admin(state.current()))
 }
 
 /// Moves the game to the submitted round, or answers `400` if it is out of range.

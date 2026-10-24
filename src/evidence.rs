@@ -30,7 +30,7 @@ impl Round {
     }
 
     /// Every round in order.
-    pub fn all() -> impl Iterator<Item = Round> {
+    pub fn all() -> impl DoubleEndedIterator<Item = Round> {
         (Self::MIN.0..=Self::MAX.0).map(Round)
     }
 }

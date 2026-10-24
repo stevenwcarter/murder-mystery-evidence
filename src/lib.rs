@@ -6,6 +6,7 @@ pub mod config;
 mod events;
 pub mod evidence;
 pub mod healthcheck;
+pub mod pages;
 pub mod server;
 pub mod state;
 

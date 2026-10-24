@@ -114,3 +114,77 @@ async fn invalid_round_is_rejected() {
         .await
         .assert_status_not_found();
 }
+
+#[tokio::test]
+async fn guest_round1_shows_waiting_message() {
+    let html = server(1).get("/").await.text();
+    assert!(html.contains(
+        "The investigation is underway. Evidence will appear here as the detective uncovers it."
+    ));
+    assert!(html.contains("<title>Jazz, Gin, Money &amp; Murder</title>"));
+    assert!(html.contains("Round 1 of 4"));
+    assert!(!html.contains("<figure"));
+}
+
+#[tokio::test]
+async fn guest_round3_shows_rounds_2_and_3_only() {
+    let res = server(3).get("/").await;
+    res.assert_status_ok();
+    res.assert_header("cache-control", "no-store");
+    let html = res.text();
+    for expected in [
+        "The Notebook",
+        "The Note",
+        "round3-note.jpg",
+        "Round 4 · sealed",
+        r#"data-round="3""#,
+    ] {
+        assert!(html.contains(expected), "missing {expected}");
+    }
+    for locked in ["The Study", "round4-view-1.jpg", "round4-view-2.jpg"] {
+        assert!(!html.contains(locked), "leaked {locked}");
+    }
+}
+
+#[tokio::test]
+async fn guest_rounds_are_newest_first() {
+    let html = server(4).get("/").await.text();
+    let newest = html.find(r#"id="round-4""#).expect("round 4 section");
+    let oldest = html.find(r#"id="round-2""#).expect("round 2 section");
+    assert!(newest < oldest);
+}
+
+#[tokio::test]
+async fn admin_page_marks_current() {
+    let res = admin(server(2).get("/admin")).await;
+    res.assert_status_ok();
+    let html = res.text();
+    assert!(html.contains("Current round: 2"));
+    assert_eq!(html.matches(r#"name="round""#).count(), 4);
+    assert_eq!(html.matches(r#"class="current""#).count(), 1);
+    let form = html
+        .split("<form")
+        .find(|form| form.contains(r#"value="2""#))
+        .expect("form for round 2");
+    assert!(form.contains(r#"class="current""#));
+}
+
+#[tokio::test]
+async fn assets_have_etag_and_no_cache() {
+    let server = server(1);
+    let res = server.get("/assets/style.css").await;
+    res.assert_status_ok();
+    let content_type = res.header("content-type");
+    assert!(content_type.to_str().unwrap().starts_with("text/css"));
+    res.assert_header("cache-control", "no-cache");
+    let etag = res.header("etag");
+    server
+        .get("/assets/style.css")
+        .add_header("if-none-match", etag)
+        .await
+        .assert_status(StatusCode::NOT_MODIFIED);
+    server
+        .get("/assets/missing.css")
+        .await
+        .assert_status_not_found();
+}
